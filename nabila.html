@@ -14,7 +14,14 @@
       align-items:center; justify-content:center;
       pointer-events:none; z-index:10;
     }
-    .sp { height: clamp(70px, 12vw, 130px); }
+    .sp { height: clamp(55px, 10vw, 120px); }
+
+    @media (max-width: 600px) {
+      .sp { height: clamp(45px, 8vw, 80px); }
+      .card { padding: 14px 20px; margin-top: 14px; border-radius: 16px; }
+      .card p { font-size: clamp(11px, 3.5vw, 15px); line-height: 1.9; }
+      .sub { font-size: clamp(12px, 3.8vw, 18px); }
+    }
 
     .sub {
       font-family:'Dancing Script', cursive;
@@ -108,8 +115,15 @@
   const scene  = new THREE.Scene();
   scene.background = new THREE.Color(0x00000a); // very dark blue-black space
 
-  const camera = new THREE.PerspectiveCamera(52, innerWidth/innerHeight, 0.01, 1000);
-  camera.position.set(0, 1.4, 6.2);
+  // Responsive camera — portrait mobile needs wider FOV & adjusted position
+  const isPortrait = innerWidth < innerHeight;
+  const isMobile   = innerWidth < 700;
+  const camFOV = isPortrait ? 60 : 52;
+  const camZ   = isPortrait ? 4.5 : 6.2;
+  const camY   = isPortrait ? 0.7 : 1.4;
+
+  const camera = new THREE.PerspectiveCamera(camFOV, innerWidth/innerHeight, 0.01, 1000);
+  camera.position.set(0, camY, camZ);
   camera.lookAt(0, 0, 0);
 
   // ── Post-Processing Bloom ──────────────────────────────────────
@@ -226,7 +240,7 @@
     }
   `;
 
-  // ── Text Pixel Sampler ────────────────────────────────────────
+  // ── Text Pixel Sampler (viewport-responsive) ─────────────────
   function sampleText(text, n) {
     const cw = 1200, ch = 360;
     const cv = document.createElement('canvas');
@@ -237,12 +251,31 @@
     cx.textAlign = 'center';
     cx.textBaseline = 'middle';
     cx.fillText(text, cw/2, ch/2);
+
+    // ── Compute dynamic divisor so text fits current viewport ──
+    // World-space visible half-width at z=0
+    const vFOVrad = camera.fov * Math.PI / 180;
+    const halfH   = camera.position.z * Math.tan(vFOVrad / 2);
+    const halfW   = halfH * camera.aspect;
+    // Measure actual pixel width of the rendered text
+    const txtPxW  = cx.measureText(text).width;
+    const txtPxH  = 215 * 0.82;            // approx cap height
+    // Target: text occupies 80% of viewport width
+    const targetW3D = halfW * 1.60;        // = 80% of full visible width
+    const divByW    = txtPxW  / targetW3D;
+    // Also cap height to 42% of viewport height
+    const targetH3D = halfH   * 0.84;
+    const divByH    = txtPxH  / targetH3D;
+    // Use whichever is more restrictive (text fits both dims)
+    const DIV = Math.max(divByW, divByH);
+
     const data = cx.getImageData(0, 0, cw, ch).data;
     const pts  = [];
     for (let y = 0; y < ch; y += 2)
       for (let x = 0; x < cw; x += 2)
         if (data[(y*cw+x)*4+3] > 100)
-          pts.push([(x-cw/2)/88, -(y-ch/2)/88]);
+          pts.push([(x - cw/2) / DIV, -(y - ch/2) / DIV]);
+
     // Shuffle
     for (let i = pts.length-1; i > 0; i--) {
       const j = (Math.random()*(i+1))|0;

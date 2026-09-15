@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>For Nabila 💖</title>
+  <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@700&display=swap" rel="stylesheet"/>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { background:#000; overflow:hidden; width:100vw; height:100vh; }
+
+    /* Nebula glow overlays */
+    .nebula {
+      position:fixed; border-radius:50%; pointer-events:none; z-index:1;
+      animation: np ease-in-out infinite alternate;
+    }
+    @keyframes np { from{opacity:.07} to{opacity:.2} }
+
+    /* UI overlay on top of Three.js canvas */
+    #ui {
+      position:fixed; top:0; left:0; width:100%; height:100%;
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      pointer-events:none; z-index:10;
+    }
+    /* Spacer so subtitle sits below the particle name */
+    .sp { height: clamp(70px, 13vw, 140px); }
+
+    .sub {
+      font-family:'Dancing Script', cursive;
+      font-size: clamp(13px, 2vw, 22px);
+      color: transparent;
+      letter-spacing: 3px;
+      text-shadow: 0 0 28px rgba(255,140,200,.9);
+      transition: color 3s ease, letter-spacing 3s ease;
+    }
+    .sub.on { color: rgba(255,220,240,.9); letter-spacing: 8px; }
+
+    .card {
+      background: rgba(255,255,255,.04);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      border: 1px solid rgba(255,150,200,.18);
+      border-radius: 22px;
+      padding: 18px 38px;
+      margin-top: 18px;
+      text-align: center;
+      opacity: 0;
+      transform: translateY(28px);
+      transition: opacity 2.5s ease .6s, transform 2.5s ease .6s;
+      box-shadow: 0 0 55px rgba(255,80,180,.12), inset 0 1px 0 rgba(255,255,255,.07);
+    }
+    .card.on { opacity:1; transform:translateY(0); }
+    .card p {
+      font-family:'Dancing Script', cursive;
+      font-size: clamp(11px, 1.7vw, 17px);
+      color: rgba(255,230,242,.92);
+      line-height: 2;
+      text-shadow: 0 0 14px rgba(255,130,190,.5);
+    }
+
+    /* Floating hearts */
+    .heart {
+      position:fixed; pointer-events:none; z-index:6;
+      animation: hf linear forwards;
+    }
+    @keyframes hf {
+      0%  { opacity:0; transform:translateY(0) rotate(0deg) scale(1); }
+      7%  { opacity:1; }
+      93% { opacity:.7; }
+      100%{ opacity:0; transform:translateY(-110vh) rotate(22deg) scale(.65); }
+    }
+
+    /* Flash burst when name fully forms */
+    #flash {
+      position:fixed; top:0; left:0; width:100%; height:100%;
+      background: radial-gradient(ellipse at center, rgba(255,100,200,.45) 0%, transparent 70%);
+      pointer-events:none; z-index:9; opacity:0;
+      transition: opacity .6s ease;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Nebula color clouds -->
+  <div class="nebula" style="width:620px;height:620px;background:#7b2fbe;top:-160px;left:-160px;filter:blur(120px);animation-duration:9s;"></div>
+  <div class="nebula" style="width:460px;height:460px;background:#c0175d;top:55%;right:-100px;filter:blur(105px);animation-duration:11s;animation-delay:2s;"></div>
+  <div class="nebula" style="width:390px;height:390px;background:#1565c0;bottom:-90px;left:22%;filter:blur(95px);animation-duration:10s;animation-delay:4s;"></div>
+  <div class="nebula" style="width:310px;height:310px;background:#e91e8c;top:12%;left:62%;filter:blur(90px);animation-duration:8s;animation-delay:1s;"></div>
+
+  <!-- Flash overlay -->
+  <div id="flash"></div>
+
+  <!-- UI layer -->
+  <div id="ui">
+    <div class="sp"></div>
+    <div class="sub" id="sub">✨ &nbsp; My Universe &nbsp;·&nbsp; My Everything &nbsp; ✨</div>
+    <div class="card" id="card">
+      <p>
+        🌟 তুমি আমার আকাশের সবচেয়ে উজ্জ্বল তারা 🌟<br/>
+        Every star in this galaxy is shining just for you 💫<br/>
+        তোমাকে ভালোবাসি, সবসময়, সারাজীবন 💖
+      </p>
+    </div>
+  </div>
+
+  <!-- Three.js from CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+  <script>
+  // ══════════════════════════════════════════════════════════
+  //   GALAXY  →  "Nabila"   Three.js Particle Formation
+  // ══════════════════════════════════════════════════════════
+
+  const TOTAL  = 9000;   // total particles
+  const N_TEXT = 4500;   // first N_TEXT particles converge to form the name
+
+  // ── Renderer ─────────────────────────────────────────────
+  const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.domElement.style.cssText = 'position:fixed;top:0;left:0;z-index:2;';
+  document.body.prepend(renderer.domElement);
+
+  const scene  = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.01, 500);
+  camera.position.z = 5;
+
+  // ── Vertex Shader (GPU interpolation) ────────────────────
+  const VERT = `
+    attribute vec3  aGP;      // galaxy start position
+    attribute vec3  aTP;      // text target position
+    attribute float aPhase;   // random phase per particle
+    attribute float aOff;     // convergence stagger offset
+    attribute float aSz;      // base size
+    attribute vec3  aCol;     // color
+    attribute float aIsT;     // 1 = text particle, 0 = bg star
+
+    uniform float uTime;
+    uniform float uProg;      // global convergence 0→1
+
+    varying vec3  vCol;
+    varying float vAlpha;
+
+    // Smooth ease in-out cubic
+    float eio(float t) {
+      return t < .5 ? 4.*t*t*t : 1. - pow(-2.*t + 2., 3.) * .5;
+    }
+
+    void main() {
+      vCol = aCol;
+
+      // ── Galaxy spiral rotation (slows as text forms) ──
+      float angle = uTime * 0.038 * (1. - uProg);
+      float cr = cos(angle), sr = sin(angle);
+      vec3 gp  = vec3(
+        aGP.x * cr - aGP.y * sr,
+        aGP.x * sr + aGP.y * cr,
+        aGP.z
+      );
+
+      // ── Organic orbital drift during galaxy phase ──
+      float aliveness = 1. - uProg;
+      gp.x += cos(uTime * .55 + aPhase)       * .028 * aliveness;
+      gp.y += sin(uTime * .55 + aPhase * 1.3) * .013 * aliveness;
+      gp.z += sin(uTime * .4  + aPhase * 2.1) * .008 * aliveness;
+
+      // ── Per-particle staggered convergence ──
+      float lp = clamp((uProg - aOff) / max(1. - aOff, .001), 0., 1.);
+      float sp = eio(lp);
+
+      // ── Interpolate galaxy → text ──
+      vec3 pos = mix(gp, aTP, sp);
+
+      // ── Subtle breathing when text is formed ──
+      float breath = uProg * sin(uTime * 1.6 + aPhase) * .007 * aIsT;
+      pos.x += breath;
+      pos.y += breath * .5;
+
+      // ── Alpha: twinkle in galaxy, solid when formed ──
+      float twinkle = .45 + .55 * sin(uTime * 2.1 + aPhase * 4.7);
+      vAlpha = mix(twinkle, .96, sp);
+
+      // ── Size: bigger for text particles when formed ──
+      float sz = aSz * mix(1., aIsT > .5 ? 2.1 : .75, sp);
+
+      vec4 mv = modelViewMatrix * vec4(pos, 1.);
+      gl_PointSize = sz * (320. / -mv.z);
+      gl_Position  = projectionMatrix * mv;
+    }
+  `;
+
+  // ── Fragment Shader: circular glowing star ────────────────
+  const FRAG = `
+    varying vec3  vCol;
+    varying float vAlpha;
+
+    void main() {
+      vec2  uv   = gl_PointCoord - .5;
+      float d    = length(uv);
+      if (d > .5) discard;
+
+      float core = 1. - smoothstep(0., .12, d);
+      float mid  = 1. - smoothstep(0., .30, d);
+      float glow = 1. - smoothstep(0., .50, d);
+
+      float a = (core * .95 + mid * .35 + glow * .18) * vAlpha;
+      vec3  c = vCol + vec3(core * .28);       // bright white core
+      gl_FragColor = vec4(c, a);
+    }
+  `;
+
+  // ── Sample "Nabila" text pixels ───────────────────────────
+  function sampleText(text, n) {
+    const cw = 1100, ch = 320;
+    const cv = document.createElement('canvas');
+    cv.width = cw; cv.height = ch;
+    const cx = cv.getContext('2d');
+
+    // Use Dancing Script if loaded, else Georgia
+    cx.font        = 'bold 195px "Dancing Script", Georgia, serif';
+    cx.fillStyle   = '#fff';
+    cx.textAlign   = 'center';
+    cx.textBaseline= 'middle';
+    cx.fillText(text, cw/2, ch/2);
+
+    const data = cx.getImageData(0, 0, cw, ch).data;
+    const pts  = [];
+    const step = 3;
+
+    for (let y = 0; y < ch; y += step)
+      for (let x = 0; x < cw; x += step)
+        if (data[(y * cw + x) * 4 + 3] > 110)
+          pts.push([(x - cw/2) / 86, -(y - ch/2) / 86]);
+
+    // Fisher-Yates shuffle
+    for (let i = pts.length - 1; i > 0; i--) {
+      const j = (Math.random() * (i+1)) | 0;
+      [pts[i], pts[j]] = [pts[j], pts[i]];
+    }
+
+    // Fill / wrap to exactly n positions
+    const r = [];
+    for (let i = 0; i < n; i++) r.push(pts[i % pts.length]);
+    return r;
+  }
+
+  // ── Spiral galaxy position generator ─────────────────────
+  function galaxyPos() {
+    const arm   = (Math.random() * 3) | 0;
+    const t     = .35 + Math.random() * 3.6;
+    const angle = t * 1.38 + arm * (Math.PI * 2 / 3);
+    const spr   = (Math.random() - .5) * .48;
+    const r     = t * 1.18 + Math.random() * .42;
+    return [
+      Math.cos(angle + spr) * r,
+      Math.sin(angle + spr) * r * .44 + (Math.random() - .5) * .24,
+      (Math.random() - .5) * .58
+    ];
+  }
+
+  // ── Color palettes ────────────────────────────────────────
+  const TC = [ // text particle colors (warm/rosy)
+    [1.0, .55, .82], [1.0, .80, .52], [.72, .52, 1.0],
+    [.55, .88, 1.0], [1.0, .70, .90], [1.0, 1.0,  .78],
+    [.92, .60, 1.0], [1.0, .62, .70]
+  ];
+  const BC = [ // background star colors (cool/white)
+    [.75, .85, 1.0], [.85, .75, 1.0], [1.0, .92, .96],
+    [.65, .95, 1.0], [1.0, 1.0, 1.0], [.80, .80, 1.0]
+  ];
+
+  // ── Build Three.js particle system ───────────────────────
+  let geo, mat, mesh;
+
+  function buildScene(textSamples) {
+    const aGP  = new Float32Array(TOTAL * 3);
+    const aTP  = new Float32Array(TOTAL * 3);
+    const aCol = new Float32Array(TOTAL * 3);
+    const aSz  = new Float32Array(TOTAL);
+    const aPh  = new Float32Array(TOTAL);
+    const aOff = new Float32Array(TOTAL);
+    const aIsT = new Float32Array(TOTAL);
+
+    for (let i = 0; i < TOTAL; i++) {
+      const i3  = i * 3;
+      const isT = i < N_TEXT;
+      const gp  = galaxyPos();
+
+      // Galaxy start
+      aGP[i3]=gp[0]; aGP[i3+1]=gp[1]; aGP[i3+2]=gp[2];
+
+      // Text target or galaxy scatter for BG stars
+      if (isT && textSamples[i]) {
+        aTP[i3]=textSamples[i][0];
+        aTP[i3+1]=textSamples[i][1];
+        aTP[i3+2]=(Math.random()-.5)*.04;
+      } else {
+        const gp2=galaxyPos();
+        aTP[i3]=gp2[0]; aTP[i3+1]=gp2[1]; aTP[i3+2]=gp2[2];
+      }
+
+      // Color
+      const c = isT ? TC[(Math.random()*TC.length)|0] : BC[(Math.random()*BC.length)|0];
+      aCol[i3]=c[0]; aCol[i3+1]=c[1]; aCol[i3+2]=c[2];
+
+      aSz[i]  = isT ? .060 + Math.random()*.048 : .020 + Math.random()*.036;
+      aPh[i]  = Math.random() * Math.PI * 2;
+      aOff[i] = isT ? Math.random() * .38 : 0;   // text particles stagger
+      aIsT[i] = isT ? 1 : 0;
+    }
+
+    geo = new THREE.BufferGeometry();
+    // Dummy position attr needed by Three.js internals
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(TOTAL*3), 3));
+    geo.setAttribute('aGP',   new THREE.BufferAttribute(aGP,   3));
+    geo.setAttribute('aTP',   new THREE.BufferAttribute(aTP,   3));
+    geo.setAttribute('aCol',  new THREE.BufferAttribute(aCol,  3));
+    geo.setAttribute('aSz',   new THREE.BufferAttribute(aSz,   1));
+    geo.setAttribute('aPhase',new THREE.BufferAttribute(aPh,   1));
+    geo.setAttribute('aOff',  new THREE.BufferAttribute(aOff,  1));
+    geo.setAttribute('aIsT',  new THREE.BufferAttribute(aIsT,  1));
+
+    mat = new THREE.ShaderMaterial({
+      vertexShader:   VERT,
+      fragmentShader: FRAG,
+      uniforms: {
+        uTime: { value: 0 },
+        uProg: { value: 0 },
+      },
+      transparent: true,
+      depthWrite:  false,
+      blending:    THREE.AdditiveBlending,
+    });
+
+    mesh = new THREE.Points(geo, mat);
+    mesh.frustumCulled = false;   // prevent culling (positions are in shader)
+    scene.add(mesh);
+  }
+
+  // ── Animation phases ──────────────────────────────────────
+  //   0  →  PHASE1 : Galaxy floats beautifully
+  //   PHASE1 → PHASE2 : Stars converge to form "Nabila"
+  //   PHASE2+ : Name formed, breathing, UI appears
+  const PHASE1 = 5.5;
+  const PHASE2 = 11.5;
+
+  let t0 = null, formed = false;
+
+  function eio(t) { return t<.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2; }
+
+  function loop(ts) {
+    requestAnimationFrame(loop);
+    if (!mesh) return;
+    if (!t0) t0 = ts;
+
+    const el = (ts - t0) / 1000;
+    mat.uniforms.uTime.value = el;
+
+    let prog = 0;
+    if      (el < PHASE1) prog = 0;
+    else if (el < PHASE2) prog = eio((el - PHASE1) / (PHASE2 - PHASE1));
+    else                  prog = 1;
+
+    mat.uniforms.uProg.value = prog;
+
+    // Trigger UI when name fully forms
+    if (prog >= 1 && !formed) {
+      formed = true;
+      onNameFormed();
+    }
+
+    renderer.render(scene, camera);
+  }
+
+  function onNameFormed() {
+    // Flash burst
+    const fl = document.getElementById('flash');
+    fl.style.opacity = '1';
+    setTimeout(() => fl.style.opacity = '0', 700);
+
+    // Show subtitle and love card
+    setTimeout(() => document.getElementById('sub').classList.add('on'),  400);
+    setTimeout(() => document.getElementById('card').classList.add('on'), 900);
+
+    // Start hearts
+    setTimeout(startHearts, 1400);
+  }
+
+  requestAnimationFrame(loop);
+
+  // ── Font loading + init ───────────────────────────────────
+  const GO = () => {
+    const samples = sampleText('Nabila', N_TEXT);
+    buildScene(samples);
+  };
+
+  Promise.race([
+    document.fonts.load('bold 195px "Dancing Script"'),
+    new Promise(r => setTimeout(r, 2200))
+  ]).then(GO).catch(GO);
+
+  // ── Resize ────────────────────────────────────────────────
+  window.addEventListener('resize', () => {
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+  });
+
+  // ── Floating Hearts ───────────────────────────────────────
+  const HE = ['💖','💕','💗','💓','💞','💝','❤️','🩷','✨','💫','⭐','🌟'];
+  function spawnHeart() {
+    const e = document.createElement('div');
+    e.className = 'heart';
+    e.textContent = HE[(Math.random() * HE.length)|0];
+    Object.assign(e.style, {
+      left:             Math.random() * 100 + 'vw',
+      bottom:           '-35px',
+      fontSize:         (11 + Math.random() * 20) + 'px',
+      animationDuration:(7  + Math.random() * 9)  + 's',
+      animationDelay:   (Math.random() * 2) + 's',
+    });
+    document.body.appendChild(e);
+    setTimeout(() => e.remove(), 22000);
+  }
+  function startHearts() {
+    for (let i = 0; i < 12; i++) setTimeout(spawnHeart, i * 450);
+    setInterval(spawnHeart, 1300);
+  }
+
+  // ── Shooting Stars ────────────────────────────────────────
+  function shootStar() {
+    const e   = document.createElement('div');
+    const len = 55 + Math.random() * 140;
+    const ang = 18 + Math.random() * 42;
+    Object.assign(e.style, {
+      position:        'fixed',
+      pointerEvents:   'none',
+      zIndex:          '3',
+      width:           len + 'px',
+      height:          '1.5px',
+      borderRadius:    '2px',
+      background:      'linear-gradient(to right, rgba(255,255,255,.96), transparent)',
+      left:            Math.random() * 82 + 'vw',
+      top:             Math.random() * 58 + 'vh',
+      transform:       `rotate(${ang}deg)`,
+      transformOrigin: 'left center',
+    });
+    document.body.appendChild(e);
+    e.animate(
+      [{ opacity:1, marginLeft:'0' },
+       { opacity:0, marginLeft:(280+Math.random()*420)+'px' }],
+      { duration: 450 + Math.random() * 750, easing:'linear' }
+    ).onfinish = () => e.remove();
+  }
+
+  setTimeout(shootStar, 600);
+  setInterval(shootStar, 3200);
+
+  // ── Subtle sparkle burst at random positions ──────────────
+  function sparkle() {
+    for (let i = 0; i < 3; i++) {
+      const s = document.createElement('div');
+      Object.assign(s.style, {
+        position:  'fixed',
+        pointerEvents: 'none',
+        zIndex:    '4',
+        width:     (3 + Math.random()*5) + 'px',
+        height:    (3 + Math.random()*5) + 'px',
+        borderRadius: '50%',
+        background: ['#ff9ff3','#ffeaa7','#a29bfe','#74b9ff','#fff','#fdcb6e']
+                    [(Math.random()*6)|0],
+        left:      Math.random()*100 + 'vw',
+        top:       Math.random()*100 + 'vh',
+        boxShadow: '0 0 8px 2px currentColor',
+      });
+      document.body.appendChild(s);
+      s.animate(
+        [{ opacity:0, transform:'scale(0)' },
+         { opacity:1, transform:'scale(1.5)', offset:.3 },
+         { opacity:0, transform:'scale(0)' }],
+        { duration: 900 + Math.random()*800, easing:'ease-out' }
+      ).onfinish = () => s.remove();
+    }
+  }
+  setInterval(sparkle, 700);
+
+  </script>
+</body>
+</html>
